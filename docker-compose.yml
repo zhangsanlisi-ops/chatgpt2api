@@ -1,0 +1,47 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.sentinel
+    image: ${CHATGPT2API_IMAGE:-chatgpt2api:sentinel-local}
+    container_name: chatgpt2api
+    restart: unless-stopped
+    ports:
+      - "${CHATGPT2API_PORT:-3000}:80"
+    volumes:
+      - chatgpt2api-runtime:/app
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-}
+      CHATGPT2API_AUTH_KEY: ${CHATGPT2API_AUTH_KEY:-}
+      CHATGPT2API_BASE_URL: ${CHATGPT2API_BASE_URL:-}
+      CHATGPT2API_THREAD_TOKENS: ${CHATGPT2API_THREAD_TOKENS:-120}
+      TZ: ${TZ:-Asia/Shanghai}
+      SENTINEL_SOLVER_URL: http://sentinel_solver:8080
+      SENTINEL_SOLVER_KEY: ${SENTINEL_SOLVER_KEY:?Set SENTINEL_SOLVER_KEY in .env}
+    depends_on:
+      sentinel_solver:
+        condition: service_healthy
+
+  sentinel_solver:
+    build:
+      context: ./sentinel_solver
+    image: chatgpt2api-sentinel-solver:local
+    restart: unless-stopped
+    environment:
+      SENTINEL_SOLVER_KEY: ${SENTINEL_SOLVER_KEY:?Set SENTINEL_SOLVER_KEY in .env}
+      SENTINEL_SOLVER_PROXY: ${SENTINEL_SOLVER_PROXY:-}
+      SENTINEL_SOLVER_TIMEZONE: ${SENTINEL_SOLVER_TIMEZONE:-}
+      TZ: ${SENTINEL_SOLVER_TIMEZONE:-Etc/UTC}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8080/health',headers={'Authorization':'Bearer '+os.environ['SENTINEL_SOLVER_KEY']}); assert urllib.request.urlopen(r,timeout=5).status==200"]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 90s
+
+volumes:
+  chatgpt2api-runtime:
